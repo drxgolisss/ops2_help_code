@@ -27,6 +27,25 @@ typedef struct {
     int attack;
 } soldier_t;
 
+int set_handler(void (*f)(int), int sig)
+{
+    struct sigaction act = {0};
+    act.sa_handler = f;
+    if (sigaction(sig, &act, NULL) == -1)
+        return -1;
+    return 0;
+}
+
+void msleep(int millisec)
+{
+    struct timespec tt;
+    tt.tv_sec = millisec / 1000;
+    tt.tv_nsec = (millisec % 1000) * 1000000;
+    while (nanosleep(&tt, &tt) == -1)
+    {
+    }
+}
+
 int count_descriptors()
 {
     int count = 0;
@@ -56,7 +75,8 @@ int count_descriptors()
     return count - 1;
 }
 
-soldier_t* load_file(const char *path, int* soldier_num /*out parameter*/) {
+soldier_t* load_file(const char *path, int* soldier_num /*out parameter*/)
+{
     FILE* file = fopen(path, "r");
     if (file == NULL) {
         if (strcmp(path, FRANCI_FILE) == 0)
@@ -79,7 +99,8 @@ soldier_t* load_file(const char *path, int* soldier_num /*out parameter*/) {
     return soldiers;
 }
 
-void child_work(soldier_t id, const char* side) {
+void print_knight_info(soldier_t id, const char* side)
+{
     if (strcmp(side, SARACENI_FILE) == 0) {
         printf("I am Spanish knight %s. I will serve my king with my %d HP and %d attack.\n",
                id.name, id.health, id.attack);
@@ -144,7 +165,8 @@ ATTACK:
 }
 
 void create_processes(soldier_t* soldiers, int soldiers_num, int* soldier_pipes,
-                      int* enemy_pipes, int enemy_num, soldier_t* enemies, const char* side) {
+                      int* enemy_pipes, int enemy_num, soldier_t* enemies, const char* side)
+{
     for (int i = 0; i < soldiers_num; i++) {
         pid_t pid = fork();
         if (pid < 0)
@@ -162,7 +184,7 @@ void create_processes(soldier_t* soldiers, int soldiers_num, int* soldier_pipes,
                 close(enemy_pipes[2 * j]);
             }
 
-            child_work(soldiers[i], side);
+            child_work(soldiers[i], soldier_pipes[2 * i], enemy_pipes, enemy_num, side);
 
             close(soldier_pipes[2 * i]);
             for (int j = 0; j < enemy_num; j++) {
@@ -180,6 +202,9 @@ void create_processes(soldier_t* soldiers, int soldiers_num, int* soldier_pipes,
 
 int main()
 {
+    if (set_handler(SIG_IGN, SIGPIPE))
+        ERR("set_handler");
+
     int franci_num, saraceni_num;
 
     soldier_t* franci = load_file(FRANCI_FILE, &franci_num);
