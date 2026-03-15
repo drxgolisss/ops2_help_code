@@ -87,8 +87,60 @@ void child_work(soldier_t id, const char* side) {
         printf("I am Frankish knight %s. I will serve my king with my %d HP and %d attack\n",
                id.name, id.health, id.attack);
     }
+}
 
-    // printf("%s: %d\n", id.name, count_descriptors());
+void child_work(soldier_t id, int reading_fd, int* enemy_pipes, int enemy_num, const char* side)
+{
+    print_knight_info(id, side);
+    srand(getpid());
+
+    int flag = fcntl(reading_fd, F_GETFL);
+    if (flag == -1)
+        ERR("fcntl");
+    if (fcntl(reading_fd, F_SETFL, flag | O_NONBLOCK) == -1)
+        ERR("fcntl");
+
+    while (id.health > 0) {
+        int damage;
+        while (1) {
+            int ret = read(reading_fd, &damage, sizeof(damage));
+            if (ret == -1) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK)
+                    break;
+                ERR("read");
+            }
+            if (ret == 0)
+                break;
+            if (ret > 0)
+                id.health -= damage;
+        }
+
+        if (id.health <= 0)
+            break;
+
+ATTACK:
+        int enemy = rand() % enemy_num;
+        int attack = rand() % (id.attack + 1);
+
+        if (write(enemy_pipes[2 * enemy + 1], &attack, sizeof(attack)) == -1) {
+            if (errno == EPIPE) {
+                goto ATTACK;
+            }
+            ERR("write");
+        }
+
+        if (attack == 0)
+            printf("%s attacks his enemy, however he deflected\n", id.name);
+        else if (attack <= 5)
+            printf("%s goes to strike, he hit right and well\n", id.name);
+        else
+            printf("%s strikes powerful blow, the shield he breaks and inflicts a big wound\n", id.name);
+
+        int sleep_time = rand() % 10 + 1;
+        msleep(sleep_time);
+    }
+
+    printf("%s died\n", id.name);
 }
 
 void create_processes(soldier_t* soldiers, int soldiers_num, int* soldier_pipes,
