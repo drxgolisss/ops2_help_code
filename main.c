@@ -110,6 +110,18 @@ void print_knight_info(soldier_t id, const char* side)
     }
 }
 
+void swap_enemy(int* enemy_pipes, int i, int p)
+{
+    int tmp_read = enemy_pipes[2 * i];
+    int tmp_write = enemy_pipes[2 * i + 1];
+
+    enemy_pipes[2 * i] = enemy_pipes[2 * p];
+    enemy_pipes[2 * i + 1] = enemy_pipes[2 * p + 1];
+
+    enemy_pipes[2 * p] = tmp_read;
+    enemy_pipes[2 * p + 1] = tmp_write;
+}
+
 void child_work(soldier_t id, int reading_fd, int* enemy_pipes, int enemy_num, const char* side)
 {
     print_knight_info(id, side);
@@ -120,6 +132,8 @@ void child_work(soldier_t id, int reading_fd, int* enemy_pipes, int enemy_num, c
         ERR("fcntl");
     if (fcntl(reading_fd, F_SETFL, flag | O_NONBLOCK) == -1)
         ERR("fcntl");
+
+    int p = enemy_num - 1;
 
     while (id.health > 0) {
         int damage;
@@ -136,15 +150,23 @@ void child_work(soldier_t id, int reading_fd, int* enemy_pipes, int enemy_num, c
                 id.health -= damage;
         }
 
-        if (id.health <= 0)
+        if (id.health < 0)
+            break;
+
+        if (p < 0)
             break;
 
 ATTACK:
-        int enemy = rand() % enemy_num;
+        if (p < 0)
+            break;
+
+        int enemy = rand() % (p + 1);
         int attack = rand() % (id.attack + 1);
 
         if (write(enemy_pipes[2 * enemy + 1], &attack, sizeof(attack)) == -1) {
             if (errno == EPIPE) {
+                swap_enemy(enemy_pipes, enemy, p);
+                p--;
                 goto ATTACK;
             }
             ERR("write");
@@ -161,7 +183,8 @@ ATTACK:
         msleep(sleep_time);
     }
 
-    printf("%s died\n", id.name);
+    if (id.health < 0)
+        printf("%s dies glorious death\n", id.name);
 }
 
 void create_processes(soldier_t* soldiers, int soldiers_num, int* soldier_pipes,
